@@ -1,0 +1,652 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MAG7 期权策略雷达</title>
+<style>
+  :root {
+    --bg: #0e1014;
+    --card: #161a22;
+    --card-2: #1d222c;
+    --border: #262c38;
+    --text: #e7eaf0;
+    --muted: #8a93a6;
+    --accent: #4f8cff;
+    --green: #2ecc71;
+    --red: #ff4d6d;
+    --amber: #f5a623;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+      "Microsoft YaHei", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    -webkit-font-smoothing: antialiased;
+  }
+  header {
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  header h1 { margin: 0; font-size: 20px; font-weight: 600; }
+  header .meta { color: var(--muted); font-size: 12px; }
+  .btn {
+    background: var(--card-2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 14px;
+    cursor: pointer;
+    font-size: 13px;
+  }
+  .btn:hover { border-color: var(--accent); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+  /* 入门科普 */
+  .intro {
+    margin: 16px 24px;
+    background: linear-gradient(135deg, #1a2236, #161a22);
+    border: 1px solid #2a3a5a;
+    border-radius: 10px;
+    padding: 18px 22px;
+  }
+  .intro h2 { margin: 0 0 8px; font-size: 16px; }
+  .intro h3 { margin: 14px 0 6px; font-size: 13px; color: var(--accent); }
+  .intro p, .intro li { color: #c5cbd6; font-size: 13px; line-height: 1.7; margin: 0; }
+  .intro ul { padding-left: 20px; margin: 4px 0 0; }
+  .intro .toggle {
+    cursor: pointer;
+    user-select: none;
+    color: var(--accent);
+    font-size: 13px;
+    margin-top: 8px;
+    display: inline-block;
+  }
+  .intro-body { display: none; margin-top: 8px; }
+  .intro.open .intro-body { display: block; }
+  .glossary {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 10px;
+    margin-top: 10px;
+  }
+  .glossary div {
+    background: rgba(0,0,0,.2);
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 12px;
+    color: #c5cbd6;
+    line-height: 1.6;
+  }
+  .glossary b { color: var(--text); }
+
+  .underlying-strip {
+    display: flex;
+    overflow-x: auto;
+    gap: 10px;
+    padding: 12px 24px;
+    border-bottom: 1px solid var(--border);
+  }
+  .uni-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 12px;
+    min-width: 130px;
+    font-size: 12px;
+  }
+  .uni-card .name { font-weight: 600; font-size: 13px; }
+  .uni-card .row { display: flex; justify-content: space-between; color: var(--muted); margin-top: 2px; }
+  .pos { color: var(--green); }
+  .neg { color: var(--red); }
+
+  .tabs {
+    display: flex;
+    gap: 4px;
+    padding: 12px 24px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .tab {
+    padding: 8px 16px;
+    cursor: pointer;
+    color: var(--muted);
+    border-bottom: 2px solid transparent;
+    font-size: 14px;
+  }
+  .tab.active { color: var(--text); border-bottom-color: var(--accent); }
+  .tab .count {
+    color: var(--muted); font-size: 12px; margin-left: 6px;
+    background: var(--card-2); padding: 1px 6px; border-radius: 8px;
+  }
+
+  main { max-width: 1100px; margin: 16px auto; padding: 0 24px 60px; }
+  .pick {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-bottom: 8px;
+    transition: border-color .15s;
+  }
+  .pick-head { border-radius: 8px; }
+  .pick.open .pick-head { border-radius: 8px 8px 0 0; }
+  .pick:hover { border-color: #34405a; }
+  .pick.open { border-color: var(--accent); }
+
+  .pick-head {
+    display: grid;
+    grid-template-columns: 60px 110px 1fr auto auto;
+    gap: 12px;
+    align-items: center;
+    padding: 12px 16px;
+    cursor: pointer;
+    user-select: none;
+  }
+  .score { font-size: 22px; font-weight: 700; text-align: center; color: var(--accent); }
+  .score-label { font-size: 10px; color: var(--muted); text-align: center; letter-spacing: 0.5px; }
+  .strategy-tag {
+    display: inline-block;
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    background: var(--card-2);
+    color: var(--text);
+    text-align: center;
+    width: 100%;
+  }
+  .strategy-tag.dir { background: rgba(46, 204, 113, .15); color: var(--green); }
+  .strategy-tag.iv  { background: rgba(245, 166, 35, .15); color: var(--amber); }
+  .strategy-tag.comp{ background: rgba(79, 140, 255, .15); color: var(--accent); }
+
+  .summary { color: var(--text); font-size: 14px; line-height: 1.5; }
+  .summary-plain { color: #d4dae6; font-size: 13px; line-height: 1.5; margin-top: 4px; }
+  .rationale { color: var(--muted); font-size: 12px; margin-top: 4px; }
+  .chevron { color: var(--muted); font-size: 16px; transition: transform .15s; }
+  .pick.open .chevron { transform: rotate(180deg); }
+
+  .pick-body { display: none; padding: 0 16px 16px; border-top: 1px solid var(--border); }
+  .pick.open .pick-body { display: block; }
+
+  .plain-box {
+    background: rgba(46, 204, 113, .08);
+    border-left: 3px solid var(--green);
+    border-radius: 4px;
+    padding: 12px 14px;
+    margin-top: 12px;
+    font-size: 13px;
+    line-height: 1.7;
+  }
+  .plain-box h4 {
+    margin: 0 0 6px;
+    font-size: 13px;
+    color: var(--green);
+  }
+  .plain-box .step {
+    display: grid;
+    grid-template-columns: 24px 1fr;
+    gap: 6px;
+    margin-top: 4px;
+  }
+  .plain-box .step > b {
+    background: var(--green);
+    color: #000;
+    width: 20px; height: 20px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    flex-shrink: 0;
+  }
+  .plain-box .step span b { color: var(--text); }
+  .plain-box .pnl {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-top: 8px;
+  }
+  .plain-box .pnl div {
+    background: rgba(0,0,0,.25);
+    border-radius: 4px;
+    padding: 6px 10px;
+  }
+  .plain-box .pnl .max-loss { color: var(--red); }
+  .plain-box .pnl .max-gain { color: var(--green); }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 8px;
+    margin-top: 12px;
+  }
+  .kv {
+    background: var(--card-2);
+    border-radius: 6px;
+    padding: 8px 10px;
+    cursor: help;
+  }
+  .kv .k { color: var(--muted); font-size: 11px; }
+  .kv .v { font-size: 14px; font-weight: 600; margin-top: 2px; font-variant-numeric: tabular-nums; }
+  .kv .hint { color: var(--muted); font-size: 11px; margin-top: 2px; line-height: 1.3; }
+
+  .footer-note {
+    margin-top: 12px;
+    padding: 10px 12px;
+    background: rgba(245,166,35,.08);
+    border-left: 3px solid var(--amber);
+    border-radius: 4px;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.5;
+  }
+  .empty { text-align: center; color: var(--muted); padding: 60px 20px; }
+  code.ccode {
+    font-family: "JetBrains Mono", Consolas, monospace;
+    background: var(--card-2);
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-size: 12px;
+  }
+  /* 术语下划线 */
+  .term {
+    border-bottom: 1px dashed var(--muted);
+    cursor: help;
+  }
+
+  /* 自定义 tooltip：悬停立即显示 */
+  [data-tip] { position: relative; }
+  [data-tip]:hover::after {
+    content: attr(data-tip);
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: #000;
+    color: #fff;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    width: max-content;
+    max-width: 300px;
+    z-index: 1000;
+    box-shadow: 0 4px 20px rgba(0,0,0,.4);
+    border: 1px solid var(--border);
+    pointer-events: none;
+  }
+  [data-tip]:hover::before {
+    content: "";
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 6px solid transparent;
+    border-top-color: #000;
+    z-index: 1000;
+    pointer-events: none;
+  }
+
+  @media (max-width: 720px) {
+    .pick-head { grid-template-columns: 50px 90px 1fr 24px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>MAG7 期权策略雷达</h1>
+    <div class="meta" id="meta">加载中…</div>
+  </div>
+  <div style="display:flex; gap:8px;">
+    <button class="btn primary" onclick="document.getElementById('intro').classList.toggle('open')">📖 期权小白入门</button>
+    <button class="btn" id="refreshBtn" onclick="manualRefresh()">手动刷新</button>
+  </div>
+</header>
+
+<!-- 小白入门科普 -->
+<section class="intro" id="intro">
+  <h2>📖 期权小白入门（30秒看懂）</h2>
+  <p style="color:var(--muted)">这页面给你的不是"买什么股票"，而是"买/卖哪张<b>期权合约</b>"。点上方按钮可折叠。</p>
+
+  <div class="intro-body">
+    <h3>1. 什么是期权？</h3>
+    <p>期权是一张"权利合同"。<b>1 张 = 控制 100 股</b>正股。你花一笔小钱（叫"权利金"）买到一个权利：在到期日之前，按某个固定价格买入或卖出 100 股。</p>
+
+    <h3>2. 两个最基础的方向</h3>
+    <ul>
+      <li><b style="color:var(--green)">CALL（看涨）</b>：你赌正股会上涨。涨得越多赚得越多，跌了最多就亏掉权利金。</li>
+      <li><b style="color:var(--red)">PUT（看跌）</b>：你赌正股会下跌。跌得越多赚得越多，涨了最多就亏掉权利金。</li>
+    </ul>
+
+    <h3>3. 真实成本怎么算？</h3>
+    <p>页面里写"权利金 $3.44"，意思是<b>每股 $3.44</b>。买 1 张实际花 <b>$3.44 × 100 = $344</b>。这就是你最大亏损。</p>
+
+    <h3>4. 三种策略类型怎么选？</h3>
+    <div class="glossary">
+      <div><b style="color:var(--green)">方向性（Long Call/Put）</b><br>直接买涨或买跌。最简单，赚得多但胜率低（约 30-40%）。适合盘前看到明显方向时。</div>
+      <div><b style="color:var(--amber)">IV/HV 卖方（信用价差）</b><br>当市场恐慌过头（IV 太贵），<b>卖</b>给别人期权赚时间价值。胜率高（约 65-75%）但单笔利润小。</div>
+      <div><b style="color:var(--accent)">综合打分</b><br>不预设方向，挑流动性最好、希腊字母最优的合约。适合作为"备选合约清单"。</div>
+    </div>
+
+    <h3>5. 关键术语速查</h3>
+    <div class="glossary">
+      <div><b>行权价 Strike</b>：合约约定的买/卖正股的价格。</div>
+      <div><b>到期日 / DTE</b>：合约到期日，DTE = 还剩几天。过期作废。</div>
+      <div><b>权利金 Premium</b>：每股的合约价格。乘以 100 是真实成本。</div>
+      <div><b>IV（隐含波动率）</b>：市场预期未来波动多大。<b>越高越贵</b>。</div>
+      <div><b>HV（历史波动率）</b>：过去 30 天实际波动了多少。</div>
+      <div><b>Delta Δ</b>：正股涨 $1，期权涨多少。0.3 = 涨 $0.3。也代表行权概率。</div>
+      <div><b>Theta Θ</b>：每天<b>损失</b>多少时间价值。-0.13 = 每天少 $0.13。买方的敌人。</div>
+      <div><b>Gamma Γ</b>：Delta 的变化速度，越大越敏感。</div>
+      <div><b>Vega ν</b>：IV 变 1%，期权变多少。</div>
+      <div><b>OI（未平仓量）</b>：当前还存在多少张合约。<b>越大流动性越好</b>。</div>
+      <div><b>价差 Spread</b>：买盘和卖盘的差距。越小越好（容易成交）。</div>
+      <div><b>信用价差 Credit Spread</b>：同时卖一张+买一张同方向期权，净收钱。最大盈亏都封顶。</div>
+    </div>
+
+    <h3>6. 怎么用这个页面？</h3>
+    <ul>
+      <li>看顶部 7 张正股卡，了解今天 MAG7 盘前涨跌氛围</li>
+      <li>切换 Tab 看三类策略，分数越高代表打分越好（满分 100）</li>
+      <li>点击任意一行展开详情，里面有「📋 白话操作指引」教你具体怎么下单</li>
+      <li>所有<span class="term" title="鼠标悬停可以看说明">虚线下划线</span>都是术语，悬停查看含义</li>
+    </ul>
+
+    <p style="margin-top: 14px; color: var(--amber);">⚠️ 期权<b>有归零风险</b>，本页面是研究工具，不是投资建议。先用模拟账户练手再说。</p>
+  </div>
+
+  <span class="toggle" onclick="document.getElementById('intro').classList.toggle('open')">▾ 展开 / 折叠</span>
+</section>
+
+<section class="underlying-strip" id="underlying"></section>
+
+<nav class="tabs" id="tabs">
+  <div class="tab active" data-cat="all">全部 <span class="count" id="cnt-all">0</span></div>
+  <div class="tab" data-cat="directional">方向性 <span class="count" id="cnt-directional">0</span></div>
+  <div class="tab" data-cat="iv_hv">IV/HV 卖方 <span class="count" id="cnt-iv_hv">0</span></div>
+  <div class="tab" data-cat="composite">综合打分 <span class="count" id="cnt-composite">0</span></div>
+</nav>
+
+<main id="picks"></main>
+
+<script>
+const STRAT_LABEL = {
+  directional: { tag: "dir",  zh: "方向性" },
+  iv_hv:       { tag: "iv",   zh: "IV/HV 卖方" },
+  composite:   { tag: "comp", zh: "综合打分" },
+};
+
+// 术语词典 - hover显示
+const TERMS = {
+  delta:    "Delta(Δ)：正股涨$1时期权涨多少。也近似代表'行权概率'，0.3≈30%概率到期变实值",
+  theta:    "Theta(Θ)：每天损失多少时间价值。负数代表买方每天扣钱，是买方的天然敌人",
+  gamma:    "Gamma(Γ)：Delta的变化速度，越大说明期权对正股变动越敏感",
+  vega:     "Vega(ν)：隐含波动率(IV)每变1%，期权价格变多少",
+  iv:       "Implied Volatility 隐含波动率：市场预期未来波动多大，越高期权越贵",
+  hv:       "Historical Volatility 历史波动率：过去30天正股实际波动了多少",
+  oi:       "Open Interest 未平仓量：还有多少张合约存在，>1000 算流动性OK",
+  premium:  "Premium 权利金：每股的合约价格，乘以100是真实成本",
+  strike:   "Strike Price 行权价：合约约定的买/卖正股的价格",
+  dte:      "Days To Expiry 距到期天数。过期合约失效，时间价值归零",
+  bid_ask:  "Bid是别人愿意买的最高价，Ask是别人愿意卖的最低价。两者差越小越容易成交",
+  ivhv:     "IV/HV 比值：市场预期波动 / 实际波动。>1.2 说明市场恐慌定价偏贵，适合卖方策略",
+};
+
+let DATA = null;
+let activeCat = "all";
+
+function fmt(v, decimals = 2, suffix = "") {
+  if (v === null || v === undefined) return "—";
+  if (typeof v === "number") return v.toFixed(decimals) + suffix;
+  return v;
+}
+function pct(v, decimals = 2) {
+  if (v === null || v === undefined) return "—";
+  return (v * 100).toFixed(decimals) + "%";
+}
+function pctRaw(v, decimals = 2) {
+  if (v === null || v === undefined) return "—";
+  return (v >= 0 ? "+" : "") + v.toFixed(decimals) + "%";
+}
+function term(label, key) {
+  return `<span class="term" title="${TERMS[key]||''}">${label}</span>`;
+}
+
+// 白话操作指引
+function plainGuide(p) {
+  const dirCN = p.type === "CALL" ? "上涨" : "下跌";
+  const stockCN = p.underlying.name;
+  const last = p.underlying.last;
+  const cost = (p.last * 100).toFixed(0);
+  const breakeven = p.type === "CALL"
+    ? (p.strike + p.last).toFixed(2)
+    : (p.strike - p.last).toFixed(2);
+  const pctMove = p.type === "CALL"
+    ? ((breakeven / last - 1) * 100).toFixed(1) + "%"
+    : ((1 - breakeven / last) * 100).toFixed(1) + "%";
+
+  if (p.category === "directional") {
+    return `
+      <div class="plain-box">
+        <h4>📋 白话操作指引（方向性策略）</h4>
+        <div>这个策略在赌：<b>${stockCN}</b> 在 ${p.dte} 天内会${p.type==="CALL"?"涨":"跌"}。</div>
+        <div class="step"><b>1</b><span>在富途/盈透下单买入 1 张：<code class="ccode">${p.code}</code></span></div>
+        <div class="step"><b>2</b><span>下单价格 ≈ $${p.last.toFixed(2)}/股，<b>1 张实际花费约 $${cost}</b>（这就是最大亏损）</span></div>
+        <div class="step"><b>3</b><span>盈亏平衡点：${stockCN} 需要${dirCN}到 <b>$${breakeven}</b>（约 ${pctMove}）才回本</span></div>
+        <div class="step"><b>4</b><span>到期前任何时候只要正股${dirCN}带动期权涨价，都可以卖出平仓获利</span></div>
+        <div class="pnl">
+          <div class="max-loss">📉 最大亏损：$${cost}（权利金归零）</div>
+          <div class="max-gain">📈 最大盈利：${p.type==="CALL"?"理论无上限":"$"+(p.strike*100-cost).toFixed(0)}</div>
+        </div>
+      </div>`;
+  }
+
+  if (p.category === "iv_hv") {
+    // 卖方策略：信用价差
+    const isPut = p.type === "PUT";
+    const direction = isPut ? "不会跌破" : "不会涨破";
+    const targetMove = isPut ? "横盘或上涨" : "横盘或下跌";
+    const wingStrike = isPut ? (p.strike - 5).toFixed(0) : (p.strike + 5).toFixed(0);
+    const credit = (p.last * 0.4 * 100).toFixed(0); // 估算信用价差净收
+    return `
+      <div class="plain-box">
+        <h4>📋 白话操作指引（卖方信用价差）</h4>
+        <div>这个策略在赌：<b>${stockCN}</b> 在 ${p.dte} 天内 <b>${targetMove}</b>，只要 <b>${direction} $${p.strike.toFixed(0)}</b> 你就赚钱。属于"高胜率小利润"。</div>
+        <div class="step"><b>1</b><span><b>卖出</b> 1 张 ${stockCN} $${p.strike.toFixed(0)} ${p.type}（收 ≈ $${(p.last*100).toFixed(0)}）</span></div>
+        <div class="step"><b>2</b><span><b>买入</b> 1 张 ${stockCN} $${wingStrike} ${p.type}（防爆仓的保护腿，约花更少）</span></div>
+        <div class="step"><b>3</b><span>开仓时<b>账户净收</b>约 $${credit}（这是最大盈利）</span></div>
+        <div class="step"><b>4</b><span>到期时只要 ${stockCN} ${direction} $${p.strike.toFixed(0)}，两张期权都作废，你拿走全部 $${credit}</span></div>
+        <div class="pnl">
+          <div class="max-loss">📉 最大亏损：约 $${(500 - credit).toFixed(0)}（5美元价差减去净收）</div>
+          <div class="max-gain">📈 最大盈利：约 $${credit}（开仓即拿到）</div>
+        </div>
+        <div style="margin-top:8px; color:var(--muted); font-size:12px;">💡 当前 ${term("IV","iv")}/${term("HV","hv")} = ${p.iv_hv_ratio}，说明市场恐慌定价偏贵，<b>卖期权的人占优</b>。</div>
+      </div>`;
+  }
+
+  // 综合打分 - 同方向性
+  return `
+    <div class="plain-box">
+      <h4>📋 白话操作指引（综合最优合约）</h4>
+      <div>这张合约的<b>流动性、希腊字母效率综合最优</b>，没预设方向，可作为做${p.type==="CALL"?"多":"空"} ${stockCN} 的备选。</div>
+      <div class="step"><b>1</b><span>如果你看${p.type==="CALL"?"涨":"跌"} ${stockCN}：买入 1 张 <code class="ccode">${p.code}</code>，约花 $${cost}</span></div>
+      <div class="step"><b>2</b><span>盈亏平衡点：${stockCN} 需到 <b>$${breakeven}</b>（约 ${pctMove}）</span></div>
+      <div class="step"><b>3</b><span>${term("Theta","theta")} ${p.theta.toFixed(3)}：每天损失 $${(Math.abs(p.theta)*100).toFixed(1)}，<b>越临近到期掉得越快</b></span></div>
+      <div class="step"><b>4</b><span>${term("OI","oi")} ${(p.oi||0).toLocaleString()}，价差 ${p.bid&&p.ask?(((p.ask-p.bid)/p.last*100).toFixed(1)+"%"):"—"}，流动性较好</span></div>
+      <div class="pnl">
+        <div class="max-loss">📉 最大亏损：$${cost}</div>
+        <div class="max-gain">📈 最大盈利：${p.type==="CALL"?"理论无上限":"$"+(p.strike*100-cost).toFixed(0)}</div>
+      </div>
+    </div>`;
+}
+
+function summaryPlain(p) {
+  const stockCN = p.underlying.name;
+  if (p.category === "directional") {
+    const dir = p.type === "CALL" ? "看涨" : "看跌";
+    const cost = (p.last * 100).toFixed(0);
+    return `👉 <b>${dir} ${stockCN}</b>，花约 $${cost} 买 1 张，赌 ${p.dte} 天内${dir==="看涨"?"上涨":"下跌"}`;
+  }
+  if (p.category === "iv_hv") {
+    const dir = p.type === "PUT" ? "不跌破" : "不涨破";
+    return `👉 赌 <b>${stockCN} 在 ${p.dte} 天内 ${dir} $${p.strike.toFixed(0)}</b>，开仓即收权利金，胜率高小利润`;
+  }
+  const dir = p.type === "CALL" ? "看涨" : "看跌";
+  return `👉 ${stockCN} 流动性最好的合约，适合${dir}时下手，花约 $${(p.last*100).toFixed(0)}`;
+}
+
+function renderUnderlying() {
+  const el = document.getElementById("underlying");
+  el.innerHTML = DATA.underlying.map(u => {
+    const dayCls = (u.day_change_rate ?? 0) >= 0 ? "pos" : "neg";
+    const preCls = (u.pre_change_rate ?? 0) >= 0 ? "pos" : "neg";
+    return `
+      <div class="uni-card">
+        <div class="name">${u.name} <span style="color:var(--muted);font-weight:400">${u.code.replace("US.","")}</span></div>
+        <div class="row"><span>现价</span><span>$${fmt(u.last)}</span></div>
+        <div class="row"><span title="美股盘前的涨跌幅">盘前</span><span class="${preCls}">${pctRaw(u.pre_change_rate)}</span></div>
+        <div class="row"><span>日内</span><span class="${dayCls}">${u.day_change_rate==null?"—":pctRaw(u.day_change_rate)}</span></div>
+        <div class="row"><span title="${TERMS.hv}">HV30</span><span>${u.hv==null?"—":(u.hv*100).toFixed(0)+"%"}</span></div>
+      </div>
+    `;
+  }).join("");
+}
+
+function renderPicks() {
+  const main = document.getElementById("picks");
+  const list = (activeCat === "all"
+    ? DATA.picks
+    : DATA.picks.filter(p => p.category === activeCat));
+  if (!list.length) {
+    main.innerHTML = `<div class="empty">该分类下暂无机会</div>`;
+    return;
+  }
+  main.innerHTML = list.map((p, i) => {
+    const cat = STRAT_LABEL[p.category];
+    return `
+      <div class="pick" data-i="${i}">
+        <div class="pick-head" onclick="toggle(this)">
+          <div>
+            <div class="score">${p.score.toFixed(0)}</div>
+            <div class="score-label">SCORE</div>
+          </div>
+          <div><span class="strategy-tag ${cat.tag}">${p.strategy}</span></div>
+          <div>
+            <div class="summary">${p.summary}</div>
+            <div class="summary-plain">${summaryPlain(p)}</div>
+          </div>
+          <div></div>
+          <div class="chevron">▾</div>
+        </div>
+        <div class="pick-body">
+          ${plainGuide(p)}
+          <div class="grid">
+            <div class="kv" title="期权合约的唯一代码，可直接复制到券商下单"><div class="k">合约代码</div><div class="v"><code class="ccode">${p.code}</code></div></div>
+            <div class="kv" title="${TERMS.strike}"><div class="k">类型 / 行权价</div><div class="v">${p.type} @ $${fmt(p.strike,0)}</div></div>
+            <div class="kv" title="${TERMS.dte}"><div class="k">到期 / 还剩天数</div><div class="v">${p.expiry} (${p.dte}d)</div></div>
+            <div class="kv" title="${TERMS.premium}"><div class="k">权利金（每股）</div><div class="v">$${fmt(p.last)} <span class="hint">×100=$${(p.last*100).toFixed(0)}/张</span></div></div>
+            <div class="kv" title="${TERMS.bid_ask}"><div class="k">买盘 / 卖盘</div><div class="v">${fmt(p.bid)} / ${fmt(p.ask)}</div></div>
+            <div class="kv" title="${TERMS.iv}"><div class="k">IV 隐含波动</div><div class="v">${pct(p.iv,1)}</div></div>
+            <div class="kv" title="${TERMS.delta}"><div class="k">Delta Δ</div><div class="v">${fmt(p.delta,3)} <span class="hint">≈${(Math.abs(p.delta)*100).toFixed(0)}% 行权概率</span></div></div>
+            <div class="kv" title="${TERMS.theta}"><div class="k">Theta Θ</div><div class="v">${fmt(p.theta,3)} <span class="hint">每天-$${(Math.abs(p.theta)*100).toFixed(1)}</span></div></div>
+            <div class="kv" title="${TERMS.gamma}"><div class="k">Gamma Γ</div><div class="v">${fmt(p.gamma,4)}</div></div>
+            <div class="kv" title="${TERMS.vega}"><div class="k">Vega ν</div><div class="v">${fmt(p.vega,3)}</div></div>
+            <div class="kv" title="${TERMS.oi}"><div class="k">未平仓 OI</div><div class="v">${(p.oi||0).toLocaleString()}</div></div>
+            <div class="kv" title="今日交易量"><div class="k">今日成交</div><div class="v">${(p.volume||0).toLocaleString()}</div></div>
+          </div>
+          <div class="footer-note">
+            <strong>📌 选中理由：</strong>${p.rationale}
+            <br/>正股 ${p.underlying.name} 现价 $${fmt(p.underlying.last)}，盘前 ${pctRaw(p.underlying.pre_change_rate)}，HV30 ${p.underlying.hv?(p.underlying.hv*100).toFixed(0)+"%":"—"}。
+            <br/>⚠️ 期权交易有归零风险，先用模拟账户练手，本工具不构成投资建议。
+          </div>
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+function toggle(el) { el.parentElement.classList.toggle("open"); }
+
+// 把所有 title 转成 data-tip（CSS 自定义 tooltip 立即显示）
+function upgradeTooltips() {
+  document.querySelectorAll('[title]').forEach(el => {
+    const t = el.getAttribute('title');
+    if (t && t.trim()) {
+      el.setAttribute('data-tip', t);
+      el.removeAttribute('title');
+    }
+  });
+}
+
+function setupTabs() {
+  document.querySelectorAll(".tab").forEach(t => {
+    t.addEventListener("click", () => {
+      document.querySelectorAll(".tab").forEach(x => x.classList.remove("active"));
+      t.classList.add("active");
+      activeCat = t.dataset.cat;
+      renderPicks();
+      upgradeTooltips();
+    });
+  });
+}
+
+async function manualRefresh() {
+  const btn = document.getElementById("refreshBtn");
+  const orig = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = "刷新中…（约 30-60 秒）";
+  try {
+    const r = await fetch("/refresh", { method: "POST" });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.ok) throw new Error(j.stderr || j.error || ("HTTP " + r.status));
+    await load();
+  } catch (e) {
+    alert("刷新失败：" + e.message + "\n\n请确认 server.py 在跑，且富途 OpenD 已启动。");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = orig;
+  }
+}
+
+async function load() {
+  const meta = document.getElementById("meta");
+  try {
+    if (window.__EMBEDDED_DATA__) {
+      document.getElementById("refreshBtn").style.display = "none";
+      DATA = window.__EMBEDDED_DATA__;
+    } else {
+      const r = await fetch("data.json?_=" + Date.now());
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      DATA = await r.json();
+    }
+    meta.textContent = `数据更新：${DATA.generated_at} · 共 ${DATA.stats.total} 个机会`;
+    document.getElementById("cnt-all").textContent = DATA.stats.total;
+    document.getElementById("cnt-directional").textContent = DATA.stats.directional;
+    document.getElementById("cnt-iv_hv").textContent = DATA.stats.iv_hv;
+    document.getElementById("cnt-composite").textContent = DATA.stats.composite;
+    renderUnderlying();
+    renderPicks();
+    upgradeTooltips();
+  } catch (e) {
+    meta.textContent = "加载失败：" + e.message;
+    document.getElementById("picks").innerHTML =
+      `<div class="empty">无法加载 data.json，请先运行 <code class="ccode">python generate.py</code></div>`;
+  }
+}
+
+setupTabs();
+load();
+if (!window.__EMBEDDED_DATA__) {
+  setInterval(load, 5 * 60 * 1000);
+}
+</script>
+</body>
+</html>
