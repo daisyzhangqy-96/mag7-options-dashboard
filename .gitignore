@@ -2,6 +2,7 @@ __pycache__/
 *.pyc
 refresh.log
 server.log
+deploy.log
 .DS_Store
 .vscode/
 .idea/
