@@ -34,6 +34,8 @@ MAG7 = [
     ("US.META", "Meta"),
     ("US.NVDA", "NVIDIA"),
     ("US.TSLA", "Tesla"),
+    ("US.HOOD", "Robinhood"),
+    ("US.SPCX", "SpaceX"),  # 占位代码，上市当日核对真实 ticker
 ]
 
 # 期权选择参数
@@ -107,13 +109,19 @@ def pick_expiry(exp_df: pd.DataFrame) -> str | None:
 
 
 def fetch_underlying(quote_ctx: OpenQuoteContext) -> dict[str, dict]:
-    """拉 MAG7 正股快照 + HV。"""
-    codes = [c for c, _ in MAG7]
-    ret, snap = quote_ctx.get_market_snapshot(codes)
-    if ret != RET_OK:
-        raise RuntimeError(f"snapshot failed: {snap}")
-
+    """拉 MAG7 正股快照 + HV。逐个查询，跳过未上市/不存在的代码。"""
     out: dict[str, dict] = {}
+    rows = []
+    for code, _name in MAG7:
+        ret, snap = quote_ctx.get_market_snapshot([code])
+        if ret != RET_OK or len(snap) == 0:
+            print(f"  [skip] {code} 快照不可用（可能未上市）: {snap}", file=sys.stderr)
+            continue
+        rows.append(snap)
+    if not rows:
+        raise RuntimeError("no underlying snapshots available")
+    snap = pd.concat(rows, ignore_index=True)
+
     for code, name in MAG7:
         row = snap[snap["code"] == code]
         if len(row) == 0:
@@ -382,6 +390,109 @@ def score_iv_hv(stock: dict, opts: list[dict]) -> list[dict]:
     return out[:2]
 
 
+def score_income(stock: dict, opts: list[dict]) -> list[dict]:
+    """
+    D. 收益增强策略：Covered Call / Cash-Secured Put
+      - Covered Call:   持仓增强，卖 OTM Call (Δ 0.20~0.35)
+      - Cash-Secured Put: 想低价接货，卖 OTM Put (|Δ| 0.20~0.35)
+      共同条件：年化收益率 ≥ 15%，OI 充足，价差合理
+    收益率口径：年化收益 = (premium / strike) * (365 / DTE)
+      - CC 用 strike 作分母（保守口径，等于"行权价被call走时锁定收益")
+      - CSP 用 strike 作分母（等于"占用资金"基准）
+    """
+    out = []
+    last = stock.get("last") or 0
+    if not last:
+        return []
+    hv = stock.get("hv") or 0
+
+    for o in opts:
+        d = o.get("delta")
+        if d is None:
+            continue
+        ad = abs(d)
+        if not (0.18 <= ad <= 0.38):
+            continue
+        premium = o.get("last") or 0
+        if premium <= 0.05:
+            continue
+        strike = o.get("strike") or 0
+        dte = o.get("dte") or 0
+        if not strike or not dte:
+            continue
+
+        # 仅考虑 OTM
+        if o["type"] == "CALL" and strike <= last:
+            continue
+        if o["type"] == "PUT" and strike >= last:
+            continue
+
+        # 年化收益率
+        annual_return = (premium / strike) * (365 / dte)
+        if annual_return < 0.15:
+            continue  # 年化 <15% 不值得占资金
+
+        # 评分维度
+        return_score = min(annual_return / 0.40, 1.0)  # 年化 40% 满分
+        liq_score = min(1.0, math.log10(max(o["oi"], 1)) / 4)
+        spread_pct = (
+            (o["ask"] - o["bid"]) / max(premium, 0.01)
+            if o.get("ask") and o.get("bid")
+            else 1
+        )
+        spread_score = max(0, 1 - spread_pct * 4)
+        # Δ 越小越安全（被指派概率小）
+        safety_score = 1 - (ad - 0.18) / 0.20  # Δ 0.18→1.0, 0.38→0.0
+        safety_score = max(0, min(1, safety_score))
+
+        total = (
+            return_score * 0.40
+            + liq_score * 0.25
+            + spread_score * 0.15
+            + safety_score * 0.20
+        ) * 100
+
+        if o["type"] == "CALL":
+            strat = "Covered Call"
+            otm_pct = (strike / last - 1) * 100
+            summary = (
+                f"持有 {stock['name']} 卖 ${strike:.0f} CALL | "
+                f"DTE {dte}d | OTM {otm_pct:.1f}% | "
+                f"年化 {annual_return*100:.1f}% | 权利金 ${premium:.2f}"
+            )
+            rationale = (
+                f"已持仓增强收益，OTM {otm_pct:.1f}%，Δ{d:.2f}（被call概率约{ad*100:.0f}%），"
+                f"HV {hv*100:.0f}% 参考"
+            )
+        else:
+            strat = "Cash-Secured Put"
+            otm_pct = (1 - strike / last) * 100
+            cash_needed = strike * 100
+            summary = (
+                f"低价接 {stock['name']} 卖 ${strike:.0f} PUT | "
+                f"DTE {dte}d | OTM {otm_pct:.1f}% | "
+                f"年化 {annual_return*100:.1f}% | 占资 ${cash_needed:,.0f}"
+            )
+            rationale = (
+                f"愿意 ${strike:.0f} 接货，OTM {otm_pct:.1f}%，|Δ|{ad:.2f}（被指派概率约{ad*100:.0f}%），"
+                f"权利金 ${premium:.2f}"
+            )
+
+        out.append(
+            {
+                **o,
+                "strategy": strat,
+                "category": "income",
+                "score": round(total, 1),
+                "annual_return": round(annual_return, 4),
+                "rationale": rationale,
+                "summary": summary,
+            }
+        )
+    out.sort(key=lambda x: x["score"], reverse=True)
+    return out[:2]
+
+
 def score_composite(stock: dict, opts: list[dict]) -> list[dict]:
     """
     C. 综合策略：流动性 + 希腊字母 + 概率
@@ -464,7 +575,8 @@ def main():
             picks_a = score_directional(stock, opts)
             picks_b = score_iv_hv(stock, opts)
             picks_c = score_composite(stock, opts)
-            for p in picks_a + picks_b + picks_c:
+            picks_d = score_income(stock, opts)
+            for p in picks_a + picks_b + picks_c + picks_d:
                 p["underlying"] = {
                     "code": stock["code"],
                     "name": stock["name"],
@@ -488,6 +600,7 @@ def main():
                 "directional": sum(1 for p in all_picks if p["category"] == "directional"),
                 "iv_hv": sum(1 for p in all_picks if p["category"] == "iv_hv"),
                 "composite": sum(1 for p in all_picks if p["category"] == "composite"),
+                "income": sum(1 for p in all_picks if p["category"] == "income"),
             },
         }
         with open("data.json", "w", encoding="utf-8") as f:
@@ -495,7 +608,8 @@ def main():
         print(f"\n完成：共 {len(all_picks)} 个策略机会写入 data.json")
         print(f"  方向性 {out['stats']['directional']}，"
               f"IV/HV {out['stats']['iv_hv']}，"
-              f"综合 {out['stats']['composite']}")
+              f"综合 {out['stats']['composite']}，"
+              f"收益增强 {out['stats']['income']}")
     finally:
         quote_ctx.close()
 

@@ -373,6 +373,7 @@
   <div class="tab" data-cat="directional">方向性 <span class="count" id="cnt-directional">0</span></div>
   <div class="tab" data-cat="iv_hv">IV/HV 卖方 <span class="count" id="cnt-iv_hv">0</span></div>
   <div class="tab" data-cat="composite">综合打分 <span class="count" id="cnt-composite">0</span></div>
+  <div class="tab" data-cat="income">收益增强 (CC/CSP) <span class="count" id="cnt-income">0</span></div>
 </nav>
 
 <main id="picks"></main>
@@ -382,6 +383,7 @@ const STRAT_LABEL = {
   directional: { tag: "dir",  zh: "方向性" },
   iv_hv:       { tag: "iv",   zh: "IV/HV 卖方" },
   composite:   { tag: "comp", zh: "综合打分" },
+  income:      { tag: "inc",  zh: "收益增强" },
 };
 
 // 术语词典 - hover显示
@@ -472,6 +474,49 @@ function plainGuide(p) {
       </div>`;
   }
 
+  if (p.category === "income") {
+    // 收益增强：CC / CSP
+    const isCall = p.type === "CALL";
+    const annualRet = (p.annual_return * 100).toFixed(1);
+    const premiumPerLot = (p.last * 100).toFixed(0);
+    const otmPct = isCall
+      ? ((p.strike / p.underlying.last - 1) * 100).toFixed(1)
+      : ((1 - p.strike / p.underlying.last) * 100).toFixed(1);
+    if (isCall) {
+      // Covered Call
+      return `
+        <div class="plain-box">
+          <h4>📋 白话操作指引（Covered Call · 持仓增强）</h4>
+          <div>前提：你<b>已经持有 100 股 ${stockCN}</b>。卖一张 OTM CALL 收权利金，等于"愿意 $${p.strike.toFixed(0)} 卖出股票换现金"。</div>
+          <div class="step"><b>1</b><span><b>卖出</b> 1 张 ${stockCN} $${p.strike.toFixed(0)} CALL（OTM ${otmPct}%）→ 立刻收 $${premiumPerLot}</span></div>
+          <div class="step"><b>2</b><span>${p.dte} 天到期：若 ${stockCN} <b>≤ $${p.strike.toFixed(0)}</b>，期权作废，权利金白拿</span></div>
+          <div class="step"><b>3</b><span>若 ${stockCN} <b>≥ $${p.strike.toFixed(0)}</b>，股票被以 $${p.strike.toFixed(0)} 卖出（仍赚差价 + 权利金）</span></div>
+          <div class="pnl">
+            <div class="max-gain">📈 收益：$${premiumPerLot}（年化 ${annualRet}%）</div>
+            <div class="max-loss">⚠️ 机会成本：放弃 $${p.strike.toFixed(0)} 以上的涨幅</div>
+          </div>
+          <div style="margin-top:8px; color:var(--muted); font-size:12px;">💡 |Δ|≈${Math.abs(p.delta).toFixed(2)}，被 call 走的概率约 ${(Math.abs(p.delta)*100).toFixed(0)}%。OTM 越远越安全但年化越低。</div>
+        </div>`;
+    } else {
+      // Cash-Secured Put
+      const cashNeeded = (p.strike * 100).toLocaleString();
+      const effectiveCost = (p.strike - p.last).toFixed(2);
+      return `
+        <div class="plain-box">
+          <h4>📋 白话操作指引（Cash-Secured Put · 低价接货）</h4>
+          <div>前提：你<b>愿意以 $${p.strike.toFixed(0)} 接 100 股 ${stockCN}</b>。账户需准备 <b>$${cashNeeded}</b> 现金作担保。</div>
+          <div class="step"><b>1</b><span><b>卖出</b> 1 张 ${stockCN} $${p.strike.toFixed(0)} PUT（OTM ${otmPct}%）→ 立刻收 $${premiumPerLot}</span></div>
+          <div class="step"><b>2</b><span>${p.dte} 天到期：若 ${stockCN} <b>≥ $${p.strike.toFixed(0)}</b>，期权作废，权利金白拿（年化 ${annualRet}%）</span></div>
+          <div class="step"><b>3</b><span>若 ${stockCN} <b>＜ $${p.strike.toFixed(0)}</b>，<b>被指派</b>买入 100 股，实际成本 ≈ $${effectiveCost}/股（比现价便宜）</span></div>
+          <div class="pnl">
+            <div class="max-gain">📈 最佳：拿走 $${premiumPerLot}（占资 $${cashNeeded}，年化 ${annualRet}%）</div>
+            <div class="max-loss">⚠️ 最坏：${stockCN} 暴跌时被迫高位接货，但成本已压低</div>
+          </div>
+          <div style="margin-top:8px; color:var(--muted); font-size:12px;">💡 |Δ|≈${Math.abs(p.delta).toFixed(2)}，被指派概率约 ${(Math.abs(p.delta)*100).toFixed(0)}%。建议只对你<b>真心想长期持有</b>的票做 CSP。</div>
+        </div>`;
+    }
+  }
+
   // 综合打分 - 同方向性
   return `
     <div class="plain-box">
@@ -499,6 +544,15 @@ function summaryPlain(p) {
     const dir = p.type === "PUT" ? "不跌破" : "不涨破";
     return `👉 赌 <b>${stockCN} 在 ${p.dte} 天内 ${dir} $${p.strike.toFixed(0)}</b>，开仓即收权利金，胜率高小利润`;
   }
+  if (p.category === "income") {
+    const annualRet = (p.annual_return * 100).toFixed(1);
+    const premium = (p.last * 100).toFixed(0);
+    if (p.type === "CALL") {
+      return `👉 持有 ${stockCN} 的话，卖 $${p.strike.toFixed(0)} CALL 收 $${premium}（年化 ${annualRet}%）`;
+    }
+    const cash = (p.strike * 100).toLocaleString();
+    return `👉 备 $${cash} 现金，卖 ${stockCN} $${p.strike.toFixed(0)} PUT 收 $${premium}（年化 ${annualRet}%，到期没跌穿白拿）`;
+  }
   const dir = p.type === "CALL" ? "看涨" : "看跌";
   return `👉 ${stockCN} 流动性最好的合约，适合${dir}时下手，花约 $${(p.last*100).toFixed(0)}`;
 }
@@ -506,6 +560,18 @@ function summaryPlain(p) {
 function renderUnderlying() {
   const el = document.getElementById("underlying");
   el.innerHTML = DATA.underlying.map(u => {
+    const pending = !u.last || u.last === 0;
+    if (pending) {
+      return `
+        <div class="uni-card" style="opacity:0.65;border-style:dashed">
+          <div class="name">${u.name} <span style="color:var(--muted);font-weight:400">${u.code.replace("US.","")}</span></div>
+          <div class="row"><span>状态</span><span style="color:var(--muted)">⏳ 待上市</span></div>
+          <div class="row"><span>现价</span><span>—</span></div>
+          <div class="row"><span>盘前</span><span>—</span></div>
+          <div class="row"><span>已加入观察</span><span>✓</span></div>
+        </div>
+      `;
+    }
     const dayCls = (u.day_change_rate ?? 0) >= 0 ? "pos" : "neg";
     const preCls = (u.pre_change_rate ?? 0) >= 0 ? "pos" : "neg";
     return `
@@ -646,6 +712,7 @@ async function load() {
     document.getElementById("cnt-directional").textContent = DATA.stats.directional;
     document.getElementById("cnt-iv_hv").textContent = DATA.stats.iv_hv;
     document.getElementById("cnt-composite").textContent = DATA.stats.composite;
+    document.getElementById("cnt-income").textContent = DATA.stats.income || 0;
     renderUnderlying();
     renderPicks();
     upgradeTooltips();
